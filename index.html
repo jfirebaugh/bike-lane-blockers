@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8' />
+    <title>Bike Lane Blockers</title>
+    <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+    <script src='https://api.tiles.mapbox.com/mapbox-gl-js/v0.47.0/mapbox-gl.js'></script>
+    <link href='https://api.tiles.mapbox.com/mapbox-gl-js/v0.47.0/mapbox-gl.css' rel='stylesheet' />
+    <script crossorigin src="https://unpkg.com/react@16/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@16/umd/react-dom.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    <style>
+        body { margin:0; padding:0; }
+        #map { position:absolute; top:0; bottom:0; width:100%; }
+    </style>
+</head>
+<body>
+
+<div id='map'></div>
+<script type="text/babel">
+    mapboxgl.accessToken = 'pk.eyJ1IjoiamZpcmUiLCJhIjoiVkRqZHhXTSJ9.k3r6TYm9oetgLQX0A_nQbQ';
+
+    var map = new mapboxgl.Map({
+        container: 'map',
+        style: 'mapbox://styles/jfire/cjkvkla912ebi2sqnzfbw3vqv?fresh=true',
+        center: {lng: -122.44, lat: 37.77},
+        zoom: 12,
+        hash: true
+    });
+
+    map.on('load', async () => {
+        const data = await (await fetch('data.json')).json();
+
+        map.addSource('reports', {
+            type: 'geojson',
+            data: {
+                type: 'FeatureCollection',
+                features: data.map((properties) => ({
+                    type: 'Feature',
+                    properties,
+                    geometry: {
+                        type: 'Point',
+                        coordinates: [+properties.long, +properties.lat]
+                    }
+                }))
+            }
+        });
+
+        map.addLayer({
+            "id": "heat",
+            "type": "heatmap",
+            "source": "reports",
+            "maxzoom": 15,
+            "paint": {
+                "heatmap-intensity": 0.15,
+                "heatmap-color": [
+                    "interpolate",
+                    ["linear"],
+                    ["heatmap-density"],
+                    0, "rgba(254,240,217,0)",
+                    0.1, "rgb(253,212,158)",
+                    1, "rgb(179,0,0)"
+                ],
+                "heatmap-radius": 20,
+                "heatmap-opacity": [
+                    "interpolate",
+                    ["linear"],
+                    ["zoom"],
+                    14, 0.7,
+                    15, 0
+                ],
+            }
+        }, 'waterway-label');
+
+        map.addLayer({
+            id: 'reports',
+            type: 'circle',
+            source: 'reports',
+            minzoom: 14,
+            paint: {
+                'circle-radius': [
+                    'interpolate',
+                    ['linear'],
+                    ['zoom'],
+                    14, 8,
+                    15, 8
+                ],
+                'circle-color': 'rgb(179,0,0)',
+                'circle-stroke-color': 'rgb(253,212,158)',
+                'circle-stroke-width': 2,
+                'circle-opacity': [
+                    'interpolate',
+                    ['linear'],
+                    ['zoom'],
+                    14, 0,
+                    15, 0.6
+                ],
+                'circle-stroke-opacity': [
+                    'interpolate',
+                    ['linear'],
+                    ['zoom'],
+                    14, 0,
+                    15, 0.6
+                ]
+            }
+        }, 'waterway-label');
+
+        const popupContent = document.createElement('div');
+        const popup = new mapboxgl.Popup({offset: 10, closeOnClick: false}).setDOMContent(popupContent);
+
+        map.on('mouseenter', 'reports', () => {
+            map.getCanvas().style.cursor = 'pointer';
+        });
+
+        map.on('mouseleave', 'reports', () => {
+            map.getCanvas().style.cursor = '';
+        });
+
+        class Popup extends React.Component {
+            render() {
+                return (
+                    <div>
+                        <h4><a target="_blank" href={`https://mobile311.sfgov.org/reports/${this.props.service_request_id}`}>{this.props.address.replace(/, SAN FRANCISCO, CA, \d+/i, '')}</a></h4>
+                        <div>{new Date(this.props.requested_datetime).toLocaleString()}</div>
+                        {this.props.media_url && <img style={{maxWidth: 200}} src={this.props.media_url}/>}
+                    </div>
+                );
+            }
+        }
+
+        map.on('click', 'reports', ({features}) => {
+            const properties = features[0].properties;
+            ReactDOM.render(React.createElement(Popup, properties), popupContent);
+            popup.setLngLat([+properties.long, +properties.lat]).addTo(map);
+        });
+    });
+</script>
+</body>
+</html>
